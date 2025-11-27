@@ -1,0 +1,461 @@
+@page "/admin"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin")]
+@inject STA_Ecommerce.Client.Services.ProductApiClient ProductApi
+@inject STA_Ecommerce.Client.Services.AdminProductApiClient AdminProductApi
+@inject STA_Ecommerce.Client.Services.AuthApiClient AuthApi
+@inject STA_Ecommerce.Client.Services.TokenDebugService TokenDebug
+@inject NavigationManager Navigation
+@inject Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider AuthStateProvider
+
+<PageTitle>Panel Administrador - STA E-commerce</PageTitle>
+
+<div class="container-fluid py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="h2 mb-0">
+            <i class="oi oi-cog me-2"></i>Panel de Administración
+        </h1>
+        <button class="btn btn-outline-danger" @onclick="Logout">
+            <i class="oi oi-account-logout me-1"></i>Cerrar sesión
+        </button>
+    </div>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-primary text-white">
+            <div class="d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="oi oi-list me-2"></i>Gestión de Productos</h5>
+                <button class="btn btn-light btn-sm" @onclick="@(() => StartCreate())">
+                    <i class="oi oi-plus me-1"></i>Agregar Producto
+                </button>
+            </div>
+        </div>
+        <div class="card-body">
+            @if (isLoading)
+            {
+                <div class="text-center py-5">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Cargando...</span>
+                    </div>
+                    <p class="mt-2 text-muted">Cargando productos...</p>
+                </div>
+            }
+            else if (!productos.Any())
+            {
+                <div class="alert alert-info text-center">
+                    <i class="oi oi-info me-2"></i>No hay productos registrados. Agrega tu primer producto.
+                </div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>ID</th>
+                                <th>Imagen</th>
+                                <th>Nombre</th>
+                                <th>Proveedor</th>
+                                <th>Precio</th>
+                                <th>Categoría</th>
+                                <th>Enlace Afiliado</th>
+                                <th class="text-end">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var p in productos)
+                            {
+                                <tr>
+                                    <td><span class="badge bg-secondary">#@p.Id</span></td>
+                                    <td>
+                                        @if (!string.IsNullOrEmpty(p.URLImagen))
+                                        {
+                                            <img src="@p.URLImagen" alt="@p.Nombre" class="img-thumbnail" style="width: 60px; height: 60px; object-fit: cover;" onerror="this.src='https://via.placeholder.com/60x60?text=No+Image'" />
+                                        }
+                                        else
+                                        {
+                                            <div class="bg-light d-flex align-items-center justify-content-center" style="width: 60px; height: 60px;">
+                                                <i class="oi oi-image text-muted"></i>
+                                            </div>
+                                        }
+                                    </td>
+                                    <td>
+                                        <strong>@p.Nombre</strong>
+                                        @if (!string.IsNullOrEmpty(p.Descripcion))
+                                        {
+                                            <br />
+                                            <small class="text-muted">@(p.Descripcion.Length > 50 ? p.Descripcion.Substring(0, 50) + "..." : p.Descripcion)</small>
+                                        }
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-info">@p.Proveedor</span>
+                                    </td>
+                                    <td>
+                                        <strong class="text-success">@p.Precio.ToString("C")</strong>
+                                    </td>
+                                    <td>
+                                        @if (!string.IsNullOrEmpty(p.Categoria))
+                                        {
+                                            <span class="badge bg-secondary">@p.Categoria</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">-</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (!string.IsNullOrEmpty(p.EnlaceAfiliado))
+                                        {
+                                            <a href="@p.EnlaceAfiliado" target="_blank" class="btn btn-sm btn-outline-primary" title="@p.EnlaceAfiliado">
+                                                <i class="oi oi-external-link me-1"></i>Ver Enlace
+                                            </a>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">-</span>
+                                        }
+                                    </td>
+                                    <td class="text-end">
+                                        <button class="btn btn-sm btn-outline-primary me-1" @onclick="@(() => Edit(p))" title="Editar">
+                                            <i class="oi oi-pencil"></i>
+                                        </button>
+                                        <button class="btn btn-sm btn-outline-danger" @onclick="@(() => Delete(p.Id))" title="Eliminar">
+                                            <i class="oi oi-trash"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+
+    @if (editingProduct is not null)
+    {
+        <div class="card shadow-sm">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0">
+                    <i class="oi oi-@(editingProduct.Id == 0 ? "plus" : "pencil") me-2"></i>
+                    @(editingProduct.Id == 0 ? "Agregar Nuevo Producto" : "Editar Producto")
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-12 mb-3">
+                        <label class="form-label fw-bold">
+                            <i class="oi oi-link-intact me-1"></i>Enlace de Afiliado <span class="text-danger">*</span>
+                        </label>
+                        <div class="input-group">
+                            <input class="form-control" @bind="editingProduct.EnlaceAfiliado" placeholder="https://..." />
+                            <button class="btn btn-primary" @onclick="ObtenerDetalles" disabled="@isFetchingDetails">
+                                @if (isFetchingDetails)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                    <span>Obteniendo...</span>
+                                }
+                                else
+                                {
+                                    <i class="oi oi-reload me-1"></i>
+                                    <span>Obtener Detalles</span>
+                                }
+                            </button>
+                        </div>
+                        <small class="form-text text-muted">Pega el enlace completo de afiliado (Shein, Temu o Amazon)</small>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label fw-bold">Nombre del Producto <span class="text-danger">*</span></label>
+                        <input class="form-control" @bind="editingProduct.Nombre" placeholder="Nombre del producto" />
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label fw-bold">Precio <span class="text-danger">*</span></label>
+                        <div class="input-group">
+                            <span class="input-group-text">$</span>
+                            <input type="number" step="0.01" class="form-control" @bind="editingProduct.Precio" placeholder="0.00" />
+                        </div>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label fw-bold">Proveedor <span class="text-danger">*</span></label>
+                        <select class="form-select" @bind="editingProduct.Proveedor">
+                            <option value="">Seleccionar...</option>
+                            <option value="Shein">Shein</option>
+                            <option value="Temu">Temu</option>
+                            <option value="Amazon">Amazon</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label fw-bold">URL de Imagen</label>
+                        <input class="form-control" @bind="editingProduct.URLImagen" placeholder="https://..." />
+                        @if (!string.IsNullOrEmpty(editingProduct.URLImagen))
+                        {
+                            <div class="mt-2">
+                                <img src="@editingProduct.URLImagen" alt="Preview" class="img-thumbnail" style="max-width: 200px; max-height: 200px;" onerror="this.style.display='none'" />
+                            </div>
+                        }
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label fw-bold">Categoría</label>
+                        <select class="form-select" @bind="editingProduct.Categoria">
+                            <option value="">Seleccionar categoría...</option>
+                            @foreach (var cat in STA_Ecommerce.Shared.ProductCategory.All)
+                            {
+                                <option value="@cat">@STA_Ecommerce.Shared.ProductCategory.GetCategoryIcon(cat) @cat</option>
+                            }
+                        </select>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Descripción</label>
+                    <textarea class="form-control" rows="4" @bind="editingProduct.Descripcion" placeholder="Descripción detallada del producto..."></textarea>
+                </div>
+
+                @if (!string.IsNullOrEmpty(errorMessage))
+                {
+                    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                        <i class="oi oi-warning me-2"></i>@errorMessage
+                        <button type="button" class="btn-close" @onclick="@(() => errorMessage = null)"></button>
+                    </div>
+                }
+
+                @if (!string.IsNullOrEmpty(successMessage))
+                {
+                    <div class="alert alert-success alert-dismissible fade show" role="alert">
+                        <i class="oi oi-check me-2"></i>@successMessage
+                        <button type="button" class="btn-close" @onclick="@(() => successMessage = null)"></button>
+                    </div>
+                }
+
+                <div class="d-flex gap-2">
+                    <button class="btn btn-success" @onclick="Save" disabled="@isSaving">
+                        @if (isSaving)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                            <span>Guardando...</span>
+                        }
+                        else
+                        {
+                            <i class="oi oi-check me-1"></i>
+                            <span>Guardar Producto</span>
+                        }
+                    </button>
+                    <button class="btn btn-secondary" @onclick="CancelEdit" disabled="@isSaving">
+                        <i class="oi oi-x me-1"></i>Cancelar
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private List<STA_Ecommerce.Shared.Product> productos = new();
+    private bool isLoading = true;
+    private bool isSaving = false;
+    private bool isFetchingDetails = false;
+    private STA_Ecommerce.Shared.Product? editingProduct;
+    private string? errorMessage;
+    private string? successMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadProducts();
+    }
+
+    private async Task LoadProducts()
+    {
+        isLoading = true;
+        try
+        {
+            productos = await ProductApi.GetProductsAsync();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error al cargar productos: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void StartCreate()
+    {
+        errorMessage = null;
+        successMessage = null;
+        editingProduct = new STA_Ecommerce.Shared.Product();
+    }
+
+    private void Edit(STA_Ecommerce.Shared.Product product)
+    {
+        errorMessage = null;
+        successMessage = null;
+        editingProduct = new STA_Ecommerce.Shared.Product
+        {
+            Id = product.Id,
+            Nombre = product.Nombre,
+            Descripcion = product.Descripcion,
+            Precio = product.Precio,
+            Proveedor = product.Proveedor,
+            EnlaceAfiliado = product.EnlaceAfiliado,
+            URLImagen = product.URLImagen,
+            Categoria = product.Categoria
+        };
+    }
+
+    private void CancelEdit()
+    {
+        editingProduct = null;
+        errorMessage = null;
+        successMessage = null;
+    }
+
+    private async Task Save()
+    {
+        if (editingProduct is null) return;
+
+        if (string.IsNullOrWhiteSpace(editingProduct.Nombre))
+        {
+            errorMessage = "El nombre del producto es obligatorio.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(editingProduct.Proveedor))
+        {
+            errorMessage = "El proveedor es obligatorio.";
+            return;
+        }
+
+        if (editingProduct.Precio <= 0)
+        {
+            errorMessage = "El precio debe ser mayor a cero.";
+            return;
+        }
+
+        isSaving = true;
+        errorMessage = null;
+        successMessage = null;
+
+        try
+        {
+            if (editingProduct.Id == 0)
+            {
+                await AdminProductApi.CreateProductAsync(editingProduct);
+                successMessage = "Producto creado exitosamente.";
+            }
+            else
+            {
+                await AdminProductApi.UpdateProductAsync(editingProduct.Id, editingProduct);
+                successMessage = "Producto actualizado exitosamente.";
+            }
+
+            editingProduct = null;
+            await LoadProducts();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error al guardar el producto: {ex.Message}";
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private async Task Delete(int id)
+    {
+        if (!await ConfirmDelete())
+        {
+            return;
+        }
+
+        try
+        {
+            await AdminProductApi.DeleteProductAsync(id);
+            successMessage = "Producto eliminado exitosamente.";
+            await LoadProducts();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error al eliminar el producto: {ex.Message}";
+        }
+    }
+
+    private Task<bool> ConfirmDelete()
+    {
+        // En una implementación real, usarías un componente de confirmación
+        // Por ahora, retornamos true directamente
+        return Task.FromResult(true);
+    }
+
+    private async Task ObtenerDetalles()
+    {
+        if (editingProduct is null || string.IsNullOrWhiteSpace(editingProduct.EnlaceAfiliado))
+        {
+            errorMessage = "Ingrese primero un enlace de afiliado válido.";
+            return;
+        }
+
+        isFetchingDetails = true;
+        errorMessage = null;
+        successMessage = null;
+
+        try
+        {
+            // Verificar que tenemos token antes de hacer la petición
+            var hasToken = await TokenDebug.HasTokenAsync();
+            if (!hasToken)
+            {
+                errorMessage = "No se encontró token de autenticación. Por favor, cierre sesión y vuelva a iniciar sesión.";
+                isFetchingDetails = false;
+                return;
+            }
+
+            var dto = await AdminProductApi.FetchProductDetailsAsync(editingProduct.EnlaceAfiliado);
+
+            editingProduct.Nombre = dto.Nombre;
+            editingProduct.Descripcion = dto.Descripcion ?? editingProduct.Descripcion;
+            editingProduct.Precio = dto.Precio;
+            editingProduct.Proveedor = dto.Proveedor;
+            editingProduct.URLImagen = dto.URLImagen;
+
+            successMessage = "Detalles del producto obtenidos exitosamente. Revise y ajuste los campos antes de guardar.";
+        }
+        catch (HttpRequestException ex)
+        {
+            var hasToken = await TokenDebug.HasTokenAsync();
+            if (!hasToken)
+            {
+                errorMessage = "Sesión expirada. Por favor, cierre sesión y vuelva a iniciar sesión.";
+            }
+            else
+            {
+                errorMessage = $"Error al obtener los detalles: {ex.Message}";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error inesperado: {ex.Message}";
+        }
+        finally
+        {
+            isFetchingDetails = false;
+        }
+    }
+
+    private async Task Logout()
+    {
+        await AuthApi.LogoutAsync();
+        if (AuthStateProvider is STA_Ecommerce.Client.Auth.SimpleAuthStateProvider simple)
+        {
+            simple.NotifyAuthStateChanged();
+        }
+
+        Navigation.NavigateTo("/");
+    }
+}

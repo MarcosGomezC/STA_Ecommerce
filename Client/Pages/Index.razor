@@ -1,0 +1,174 @@
+﻿@page "/"
+@inject STA_Ecommerce.Client.Services.ProductApiClient ProductApi
+@inject STA_Ecommerce.Client.Services.WishlistService WishlistService
+@using STA_Ecommerce.Shared
+
+<PageTitle>STA E-commerce - Tienda de Afiliados</PageTitle>
+
+<div class="page-header">
+    <div class="container">
+        <h1>STA E-commerce</h1>
+        <p>Descubre las mejores ofertas de Shein, Temu y Amazon</p>
+    </div>
+</div>
+
+<div class="container">
+    <div class="filter-section">
+        <div class="row g-3">
+            <div class="col-md-3">
+                <label>Categoría</label>
+                <select class="form-select" @bind="filtroCategoria" @bind:event="onchange" @bind:after="CargarProductos">
+                    <option value="">Todas las categorías</option>
+                    @foreach (var cat in ProductCategory.All)
+                    {
+                        <option value="@cat">@ProductCategory.GetCategoryIcon(cat) @cat</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label>Proveedor</label>
+                <select class="form-select" @bind="filtroProveedor" @bind:event="onchange" @bind:after="CargarProductos">
+                    <option value="">Todos los proveedores</option>
+                    <option value="Shein">Shein</option>
+                    <option value="Temu">Temu</option>
+                    <option value="Amazon">Amazon</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label>Precio mínimo</label>
+                <input class="form-control" type="number" step="0.01" @bind="filtroMinPrecioString" @bind:event="onchange" @bind:after="CargarProductos" placeholder="$0.00" />
+            </div>
+            <div class="col-md-2">
+                <label>Precio máximo</label>
+                <input class="form-control" type="number" step="0.01" @bind="filtroMaxPrecioString" @bind:event="onchange" @bind:after="CargarProductos" placeholder="$999.99" />
+            </div>
+            <div class="col-md-2 d-flex align-items-end">
+                <button class="btn btn-primary-modern w-100" @onclick="CargarProductos">
+                    <i class="oi oi-magnifying-glass me-1"></i>Buscar
+                </button>
+            </div>
+        </div>
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="loading-container">
+            <div class="loading-spinner"></div>
+            <p class="mt-3 text-muted">Cargando productos...</p>
+        </div>
+    }
+    else if (productos?.Any() != true)
+    {
+        <div class="empty-state">
+            <div class="empty-state-icon">📦</div>
+            <h3>No se encontraron productos</h3>
+            <p class="text-muted">Intenta ajustar los filtros de búsqueda</p>
+        </div>
+    }
+    else
+    {
+        <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 row-cols-xl-4 g-4 fade-in">
+            @foreach (var p in productos!)
+            {
+                <div class="col">
+                    <div class="product-card">
+                        <div style="position: relative; overflow: hidden;">
+                            <img src="@(string.IsNullOrEmpty(p.URLImagen) ? "https://via.placeholder.com/400x400?text=STA+E-commerce" : p.URLImagen)" 
+                                 alt="@p.Nombre" 
+                                 onerror="this.src='https://via.placeholder.com/400x400?text=STA+E-commerce'" />
+                            @if (!string.IsNullOrEmpty(p.Categoria))
+                            {
+                                <div style="position: absolute; top: 0.75rem; right: 0.75rem;">
+                                    <span class="badge-modern badge-@ProductCategory.GetCategoryColor(p.Categoria)">
+                                        @ProductCategory.GetCategoryIcon(p.Categoria) @p.Categoria
+                                    </span>
+                                </div>
+                            }
+                        </div>
+                        <div class="product-card-body">
+                            <h5 class="product-title">@p.Nombre</h5>
+                            <div class="product-provider">
+                                <span class="badge-modern badge-info">@p.Proveedor</span>
+                            </div>
+                            <div class="product-price">@p.Precio.ToString("C")</div>
+                            @if (!string.IsNullOrEmpty(p.Descripcion))
+                            {
+                                <p class="text-muted small mb-3" style="display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">
+                                    @p.Descripcion
+                                </p>
+                            }
+                            <div class="mt-auto d-flex gap-2">
+                                <a class="btn btn-success-modern flex-fill" 
+                                   href="@p.EnlaceAfiliado" 
+                                   target="_blank" 
+                                   rel="noopener noreferrer">
+                                    <i class="oi oi-external-link me-1"></i>Ver Oferta
+                                </a>
+                                <button class="btn btn-outline-secondary" 
+                                        @onclick="() => ToggleWishlist(p.Id)"
+                                        title="@(wishlist.Contains(p.Id) ? "Quitar de favoritos" : "Agregar a favoritos")">
+                                    @if (wishlist.Contains(p.Id))
+                                    {
+                                        <span style="color: #f59e0b;">★</span>
+                                    }
+                                    else
+                                    {
+                                        <span>☆</span>
+                                    }
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private List<Product>? productos;
+    private bool isLoading = true;
+
+    private string? filtroCategoria;
+    private string? filtroProveedor;
+    private string? filtroMinPrecioString;
+    private string? filtroMaxPrecioString;
+
+    private HashSet<int> wishlist = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        wishlist = await WishlistService.GetWishlistAsync();
+        await CargarProductos();
+    }
+
+    private async Task CargarProductos()
+    {
+        isLoading = true;
+        StateHasChanged();
+
+        decimal? min = null;
+        decimal? max = null;
+
+        if (decimal.TryParse(filtroMinPrecioString, out var parsedMin))
+        {
+            min = parsedMin;
+        }
+
+        if (decimal.TryParse(filtroMaxPrecioString, out var parsedMax))
+        {
+            max = parsedMax;
+        }
+
+        productos = await ProductApi.GetProductsAsync(filtroProveedor, filtroCategoria, min, max);
+        isLoading = false;
+        StateHasChanged();
+    }
+
+    private async Task ToggleWishlist(int id)
+    {
+        await WishlistService.ToggleAsync(id);
+        wishlist = await WishlistService.GetWishlistAsync();
+        StateHasChanged();
+    }
+}

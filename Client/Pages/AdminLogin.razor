@@ -1,0 +1,60 @@
+@page "/admin/login"
+@inject STA_Ecommerce.Client.Services.AuthApiClient AuthApi
+@inject NavigationManager Navigation
+@inject Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider AuthStateProvider
+
+<PageTitle>Login Administrador</PageTitle>
+
+<div class="row justify-content-center mt-5">
+    <div class="col-md-4">
+        <h2 class="mb-4 text-center">Acceso Administrador</h2>
+
+        @if (!string.IsNullOrEmpty(error))
+        {
+            <div class="alert alert-danger">@error</div>
+        }
+
+        <div class="mb-3">
+            <label class="form-label">Email</label>
+            <input class="form-control" @bind="email" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Contraseña</label>
+            <input class="form-control" type="password" @bind="password" />
+        </div>
+        <button class="btn btn-primary w-100" @onclick="OnLoginClicked" disabled="@isSubmitting">
+            @(isSubmitting ? "Ingresando..." : "Ingresar")
+        </button>
+    </div>
+</div>
+
+@code {
+    private string email = "admin@sta.local";
+    private string password = "Admin123$";
+    private string? error;
+    private bool isSubmitting;
+
+    private async Task OnLoginClicked()
+    {
+        error = null;
+        isSubmitting = true;
+
+        var ok = await AuthApi.LoginAsync(email, password);
+        isSubmitting = false;
+
+        if (!ok)
+        {
+            error = "Credenciales inválidas.";
+            return;
+        }
+
+        if (AuthStateProvider is STA_Ecommerce.Client.Auth.SimpleAuthStateProvider simple)
+        {
+            simple.NotifyAuthStateChanged();
+        }
+
+        Navigation.NavigateTo("/admin");
+    }
+}
+
+
