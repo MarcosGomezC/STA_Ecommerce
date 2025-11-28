@@ -1,6 +1,7 @@
 ﻿@page "/"
 @inject STA_Ecommerce.Client.Services.ProductApiClient ProductApi
 @inject STA_Ecommerce.Client.Services.WishlistService WishlistService
+@inject HttpClient Http
 @using STA_Ecommerce.Shared
 
 <PageTitle>STA E-commerce - Tienda de Afiliados</PageTitle>
@@ -73,8 +74,8 @@
                 <div class="col">
                     <div class="product-card">
                         <div style="position: relative; overflow: hidden;">
-                            <img src="@(string.IsNullOrEmpty(p.URLImagen) ? "https://via.placeholder.com/400x400?text=STA+E-commerce" : p.URLImagen)" 
-                                 alt="@p.Nombre" 
+                            <img src="@(string.IsNullOrEmpty(p.URLImagen) ? "https://via.placeholder.com/400x400?text=STA+E-commerce" : p.URLImagen)"
+                                 alt="@p.Nombre"
                                  onerror="this.src='https://via.placeholder.com/400x400?text=STA+E-commerce'" />
                             @if (!string.IsNullOrEmpty(p.Categoria))
                             {
@@ -98,13 +99,14 @@
                                 </p>
                             }
                             <div class="mt-auto d-flex gap-2">
-                                <a class="btn btn-success-modern flex-fill" 
-                                   href="@p.EnlaceAfiliado" 
-                                   target="_blank" 
-                                   rel="noopener noreferrer">
+                                <a class="btn btn-success-modern flex-fill"
+                                   href="@p.EnlaceAfiliado"
+                                   target="_blank"
+                                   rel="noopener noreferrer"
+                                   @onclick="() => TrackClick(p.Id)">
                                     <i class="oi oi-external-link me-1"></i>Ver Oferta
                                 </a>
-                                <button class="btn btn-outline-secondary" 
+                                <button class="btn btn-outline-secondary"
                                         @onclick="() => ToggleWishlist(p.Id)"
                                         title="@(wishlist.Contains(p.Id) ? "Quitar de favoritos" : "Agregar a favoritos")">
                                     @if (wishlist.Contains(p.Id))
@@ -170,5 +172,29 @@
         await WishlistService.ToggleAsync(id);
         wishlist = await WishlistService.GetWishlistAsync();
         StateHasChanged();
+    }
+
+    private async Task TrackClick(int productId)
+    {
+        try
+        {
+            // Determinar la fuente del click
+            var source = "Home";
+            if (!string.IsNullOrEmpty(filtroCategoria))
+            {
+                source = $"Category:{filtroCategoria}";
+            }
+            else if (!string.IsNullOrEmpty(filtroProveedor))
+            {
+                source = $"Provider:{filtroProveedor}";
+            }
+
+            // Registrar el click de forma asíncrona sin bloquear la navegación
+            _ = Http.PostAsync($"api/tracking/click/{productId}?source={Uri.EscapeDataString(source)}", null);
+        }
+        catch
+        {
+            // Ignorar errores de tracking para no afectar la experiencia del usuario
+        }
     }
 }

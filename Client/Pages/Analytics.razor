@@ -1,0 +1,330 @@
+﻿@page "/admin/analytics"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin")]
+@inject HttpClient Http
+@using STA_Ecommerce.Shared
+@using System.Net.Http.Json
+
+<PageTitle>Analytics - STA E-commerce</PageTitle>
+
+<div class="container-fluid py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="h2 mb-0">
+            <i class="oi oi-bar-chart me-2"></i>Panel de Analytics
+        </h1>
+        <div class="d-flex gap-2">
+            <button class="btn btn-outline-primary" @onclick="LoadStats">
+                <i class="oi oi-reload me-1"></i>Actualizar
+            </button>
+            <a href="/admin" class="btn btn-outline-secondary">
+                <i class="oi oi-arrow-left me-1"></i>Volver
+            </a>
+        </div>
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Cargando...</span>
+            </div>
+            <p class="mt-2 text-muted">Cargando estadísticas...</p>
+        </div>
+    }
+    else if (stats != null)
+    {
+        <!-- KPIs principales -->
+        <div class="row g-4 mb-4">
+            <div class="col-md-3">
+                <div class="card shadow-sm border-0">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <h6 class="text-muted mb-1">Total Clicks</h6>
+                                <h2 class="mb-0">@stats.TotalClicks</h2>
+                            </div>
+                            <div class="bg-primary bg-opacity-10 p-3 rounded">
+                                <i class="oi oi-cursor" style="font-size: 1.5rem; color: var(--bs-primary);"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card shadow-sm border-0">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <h6 class="text-muted mb-1">Visitantes Únicos</h6>
+                                <h2 class="mb-0">@stats.UniqueIPs</h2>
+                            </div>
+                            <div class="bg-success bg-opacity-10 p-3 rounded">
+                                <i class="oi oi-people" style="font-size: 1.5rem; color: var(--bs-success);"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card shadow-sm border-0">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <h6 class="text-muted mb-1">CTR Promedio</h6>
+                                <h2 class="mb-0">@CalculateCTR()%</h2>
+                            </div>
+                            <div class="bg-info bg-opacity-10 p-3 rounded">
+                                <i class="oi oi-graph" style="font-size: 1.5rem; color: var(--bs-info);"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card shadow-sm border-0">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <h6 class="text-muted mb-1">Clicks/Visitante</h6>
+                                <h2 class="mb-0">@CalculateClicksPerVisitor()</h2>
+                            </div>
+                            <div class="bg-warning bg-opacity-10 p-3 rounded">
+                                <i class="oi oi-target" style="font-size: 1.5rem; color: var(--bs-warning);"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-4">
+            <!-- Productos más clickeados -->
+            <div class="col-lg-6">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-white">
+                        <h5 class="mb-0">
+                            <i class="oi oi-fire me-2 text-danger"></i>Top 10 Productos
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        @if (stats.TopProducts.Any())
+                        {
+                            <div class="table-responsive">
+                                <table class="table table-hover mb-0">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>#</th>
+                                            <th>Producto</th>
+                                            <th class="text-end">Clicks</th>
+                                            <th class="text-end">%</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var (product, index) in stats.TopProducts.Select((p, i) => (p, i)))
+                                        {
+                                            <tr>
+                                                <td>@(index + 1)</td>
+                                                <td>
+                                                    <strong>@product.ProductName</strong>
+                                                    <br />
+                                                    <small class="text-muted">ID: @product.ProductId</small>
+                                                </td>
+                                                <td class="text-end"><span class="badge bg-primary">@product.Clicks</span></td>
+                                                <td class="text-end">@((product.Clicks * 100.0 / stats.TotalClicks).ToString("F1"))%</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                        else
+                        {
+                            <p class="text-muted text-center py-4">No hay datos disponibles</p>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <!-- Clicks por proveedor -->
+            <div class="col-lg-6">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-white">
+                        <h5 class="mb-0">
+                            <i class="oi oi-briefcase me-2 text-primary"></i>Clicks por Proveedor
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        @if (stats.ClicksByProvider.Any())
+                        {
+                            @foreach (var provider in stats.ClicksByProvider.OrderByDescending(p => p.Value))
+                            {
+                                var percentage = (provider.Value * 100.0 / stats.TotalClicks);
+                                <div class="mb-3">
+                                    <div class="d-flex justify-content-between align-items-center mb-1">
+                                        <span class="fw-bold">@provider.Key</span>
+                                        <span class="text-muted">@provider.Value clicks (@percentage.ToString("F1")%)</span>
+                                    </div>
+                                    <div class="progress" style="height: 25px;">
+                                        <div class="progress-bar @GetProviderColor(provider.Key)"
+                                             role="progressbar"
+                                             style="width: @percentage%"
+                                             aria-valuenow="@percentage"
+                                             aria-valuemin="0"
+                                             aria-valuemax="100">
+                                            @percentage.ToString("F1")%
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        }
+                        else
+                        {
+                            <p class="text-muted text-center py-4">No hay datos disponibles</p>
+                        }
+                    </div>
+                </div>
+
+                <!-- Clicks por fuente -->
+                <div class="card shadow-sm mt-4">
+                    <div class="card-header bg-white">
+                        <h5 class="mb-0">
+                            <i class="oi oi-fork me-2 text-success"></i>Clicks por Fuente
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        @if (stats.ClicksBySource.Any())
+                        {
+                            <div class="table-responsive">
+                                <table class="table table-sm mb-0">
+                                    <thead>
+                                        <tr>
+                                            <th>Fuente</th>
+                                            <th class="text-end">Clicks</th>
+                                            <th class="text-end">%</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var source in stats.ClicksBySource.OrderByDescending(s => s.Value))
+                                        {
+                                            <tr>
+                                                <td>@source.Key</td>
+                                                <td class="text-end">@source.Value</td>
+                                                <td class="text-end">@((source.Value * 100.0 / stats.TotalClicks).ToString("F1"))%</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                        else
+                        {
+                            <p class="text-muted text-center py-4">No hay datos disponibles</p>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Clicks por hora -->
+        @if (stats.ClicksByHour.Any())
+        {
+            <div class="card shadow-sm mt-4">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0">
+                        <i class="oi oi-clock me-2 text-info"></i>Distribución por Hora
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        @foreach (var hour in stats.ClicksByHour.OrderBy(h => h.Key))
+                        {
+                            var percentage = stats.ClicksByHour.Values.Max() > 0
+                            ? (hour.Value * 100.0 / stats.ClicksByHour.Values.Max())
+                            : 0;
+                            <div class="col-6 col-md-4 col-lg-3 col-xl-2 mb-3">
+                                <div class="text-center">
+                                    <div class="progress" style="height: 60px;">
+                                        <div class="progress-bar bg-info"
+                                             role="progressbar"
+                                             style="width: 100%; height: @percentage%"
+                                             aria-valuenow="@percentage"
+                                             aria-valuemin="0"
+                                             aria-valuemax="100">
+                                        </div>
+                                    </div>
+                                    <small class="text-muted d-block mt-1">@hour.Key</small>
+                                    <strong>@hour.Value</strong>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        }
+    }
+    else if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="alert alert-danger">
+            <i class="oi oi-warning me-2"></i>@errorMessage
+        </div>
+    }
+</div>
+
+@code {
+    private ClickStats? stats;
+    private bool isLoading = true;
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadStats();
+    }
+
+    private async Task LoadStats()
+    {
+        isLoading = true;
+        errorMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            // Obtener estadísticas de los últimos 30 días
+            var from = DateTime.UtcNow.AddDays(-30);
+            var to = DateTime.UtcNow;
+
+            stats = await Http.GetFromJsonAsync<ClickStats>(
+                $"api/analytics/stats?from={from:O}&to={to:O}");
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error al cargar estadísticas: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private string CalculateCTR()
+    {
+        if (stats == null || stats.UniqueIPs == 0) return "0.0";
+        return ((stats.TotalClicks * 100.0) / stats.UniqueIPs).ToString("F1");
+    }
+
+    private string CalculateClicksPerVisitor()
+    {
+        if (stats == null || stats.UniqueIPs == 0) return "0.0";
+        return ((double)stats.TotalClicks / stats.UniqueIPs).ToString("F1");
+    }
+
+    private string GetProviderColor(string provider)
+    {
+        return provider.ToLower() switch
+        {
+            "shein" => "bg-danger",
+            "temu" => "bg-warning",
+            "amazon" => "bg-info",
+            _ => "bg-secondary"
+        };
+    }
+}
